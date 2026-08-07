@@ -1,23 +1,41 @@
-const express=require("express");
-const app=express();
-const mongoose=require("mongoose");
-const Listing=require("./models/listing.js");
-const path=require("path"); // This is for ejs
-const methodOverride=require("method-override"); // It is express middleware allow HTML to send PUT, PATCH and DELETE requests
-const ejsMate=require("ejs-mate"); // It helps to create template and layout
-const wrapAsync=require("./utilities/wrapAsync.js");
-const ExpressError=require("./utilities/ExpressError.js");
-const {listingSchema, reviewSchema}=require("./schema.js"); 
-const Review=require("./models/review.js");
+if(process.env.NODE_ENV != "production"){ // This is for env file should not be uploaded on the server while deploying the project
+  require('dotenv').config();
+}
+// console.log(process.env.SECRET);
+
+const express = require("express");
+const app = express();
+const mongoose = require("mongoose");
+const path = require("path"); // This is for ejs
+const methodOverride = require("method-override"); // It is express middleware allow HTML to send PUT, PATCH and DELETE requests
+const ejsMate = require("ejs-mate"); // It helps to create template and layout
+const ExpressError = require("./utilities/ExpressError.js");
+const session=require("express-session");
+const flash=require("connect-flash");
+const passport=require("passport");
+const LocalStrategy=require("passport-local");
+const User=require("./Models/user.js");
+
+
+// to create API route
+app.get("/", (req, res) => {
+  res.send("Hi, I am root");
+});
+
+const listingRouter= require("./routes/listing.js");
+const reviewRouter=require("./routes/review.js");
+const userRouter=require("./routes/user.js");
+
+const { constrainedMemory } = require("process");
 
 // to create database
-const MONGO_URL="mongodb://127.0.0.1:27017/wanderlust";
+const MONGO_URL = "mongodb://127.0.0.1:27017/wanderlust";
 
 //to call async main fuction
 main()
-  .then( ()=>{
+  .then(() => {
     console.log("Connected to DB");
-  }).catch((err) =>{
+  }).catch((err) => {
     console.log(err);
   });
 
@@ -28,165 +46,70 @@ async function main() {
 // This is for the ejs views folder and ejs
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
-app.use(express.urlencoded({extended:true})); // For the express route
+app.use(express.urlencoded({ extended: true })); // For the express route
 app.use(methodOverride("_method"));
 app.engine("ejs", ejsMate); //To make the template
 app.use(express.static(path.join(__dirname, "/public"))); // TO serve the static files
 
-// to create API route
-app.get("/", (req, res) =>{
-  res.send("Hi, I am root");
-});
-
-//validation for schema(Middleware)
-const validateListing=(req, res, next)=>{
-let {error}=listingSchema.validate(req.body);
-  if(error){
-    let errMsg=error.details.map((el)=>el.message).join(",");
-    throw new ExpressError(400, errMsg);
-  }else{
-    next();
-  }
+//for sessions
+const sessionOptions={
+  secret:"mysupersecreatcode",
+  resave:false,
+  saveUninitialized:true,
+  cookie:{
+    expires: Date.now()  + 7  * 24 * 60 * 60 * 1000,
+    maxAge:7  * 24 * 60 * 60 * 1000,
+    httpOnly:true,
+  },
 };
 
-//validation for reviewSchema
-const validateReview=(req, res, next)=>{
-let {error}=reviewSchema.validate(req.body);
-  if(error){
-    let errMsg=error.details.map((el)=>el.message).join(",");
-    throw new ExpressError(400, errMsg);
-  }else{
-    next();
-  }
-};
+app.use(session(sessionOptions));
+app.use(flash());
 
-// index route
-app.get("/listings", wrapAsync(async (req, res) =>{
-  const allListings= await Listing.find({});
-    res.render("listings/index.ejs", {allListings});
-  }));
+//middleware to authenticate User
+app.use(passport.initialize());
+app.use(passport.session());
+passport.use(new LocalStrategy(User.authenticate()));
 
-// New Route(CREATE)  
-app.get("/listings/new", (req, res)=>{
-  res.render("listings/new.ejs");
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+//middleware for flash
+app.use((req, res, next) =>{
+  res.locals.success=req.flash("success");
+  res.locals.error=req.flash("error");
+  res.locals.currUser=req.user;
+  // console.log(res.locals.success);
+  next();
 });
 
-// Show route(READ)
-app.get("/listings/:id", wrapAsync(async (req, res) =>{
-  let { id } =req.params; // TO extract the id from the obj and store it in id variable
-  const listing = await Listing.findById(id).populate("reviews");
-  res.render("listings/show.ejs", {listing});
-}));
-
-// Create route(CREATE)
-app.post("/listings", validateListing, wrapAsync(async (req, res, next) => {
-  
-  // if(!req.body.listing){
-  //   throw new ExpressError(400, "Send valid data for listing");
-  // }
-  const newListing = new Listing(req.body.listing);
-  newListing.image = {
-    url: req.body.listing.image,
-    filename: "listingimage",
-  };
-
-  await newListing.save();
-  res.redirect("/listings");
-
-})
-  // let listing=req.body.listing;
-  // console.log(listing);
-);
-
-// edit route
-app.get("/listings/:id/edit", wrapAsync(async(req, res)=>{
-  let { id } =req.params; 
-  const listing = await Listing.findById(id);
-  res.render("listings/edit.ejs", { listing });
-}));
-
-// update route (UPDATE)
-app.put("/listings/:id",validateListing, wrapAsync(async (req, res) => {
-  let { id } = req.params;
-
-  req.body.listing.image = {
-    url: req.body.listing.image,
-    filename: "listingimage",
-  };
-
-  await Listing.findByIdAndUpdate(id, req.body.listing);
-
-  res.redirect(`/listings/${id}`);
-}));
-
-//delete route (DELETE)
-app.delete("/listings/:id", wrapAsync(async (req, res)=>{
-  let { id } =req.params;
-  let deletedListings= await Listing.findByIdAndDelete(id);
-  console.log(deletedListings);
-  res.redirect("/listings");
-}));
-
-//Reviews 
-//POST review route
-app.post("/listings/:id/review", validateReview, wrapAsync(async(req, res) =>{
-  let listing =await Listing.findById(req.params.id);
-  let newReview=new Review(req.body.review);
-
-  listing.reviews.push(newReview);
-
-  await newReview.save();
-  await listing.save();
-  
-  res.redirect(`/listings/${listing._id}`);
-})
-);
-
-//Delete review route
-app.delete("/listings/:id/reviews/:reviewId", wrapAsync(async(req, res) =>{
-  let {id, reviewId}=req.params;
-
-  await Listing.findByIdAndUpdate(id, {$pull:{reviews:reviewId}});
-  await Review.findByIdAndDelete(reviewId);
-
-  res.redirect(`/listings/${id}`);
-}));
-
-//Create new route
-// app.get("/testListing", async(req, res) =>{
-//   let samplelisting=new Listing({
-//     title:"My new Villa",
-//     description:"By the beach",
-//     price:1200,
-//     location:"calangute, Goa",
-//     country:"India",
+//Demo user for authentication
+// app.get("/demouser",  async(req, res) =>{
+//   let fakeUser=new User({
+//     email:"student@gmail.com",
+//     username:"college-student",
 //   });
-
-//   await samplelisting.save(); // to save the data in database
-//   console.log("sample was saved");
-//   res.send("Successful testing");
+  
+//   let registeredUser=await User.register(fakeUser, "helloworld"); //helloworld is password here
+//   res.send(registeredUser);
 // });
 
-
-
+app.use("/listings", listingRouter); //This one line contain the all above routes inforamtion in listing.js file
+app.use("/listings/:id/reviews", reviewRouter);
+app.use("/", userRouter);
 
 //ExpressError
-app.all("/*splat",(req, res, next)=>{
+app.all("/*splat", (req, res, next) => {
   next(new ExpressError(404, "Page not found!"));
 });
 
-app.use((err, req, res, next)=>{
-  let{statuscode=500, message="Something went wrong!"}=err;
-  res.status(statuscode).render("error.ejs",{message});
+app.use((err, req, res, next) => {
+  let { statuscode = 500, message = "Something went wrong!" } = err;
+  res.status(statuscode).render("error.ejs", { message });
   // res.status(statuscode).send(message);
 });
 
-// Custom error handling middleware
-app.use((err, req, res, next )=>{
-  res.send("Something went wrong");
-});
-
 //server creation
-app.listen(8080, () =>{
+app.listen(8080, () => {
   console.log("server is listening to port 8080");
 });

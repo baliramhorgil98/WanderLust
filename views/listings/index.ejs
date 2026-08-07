@@ -1,8 +1,8 @@
 <% layout("/layouts/boilerplate") %>
-<body>
+ <%=success %>
   <h3>All Listings</h3>
   <form method="GET" action="/listings/new">
-    <button>Create New Listing</button>
+    
 
   <div class="row row-cols-lg-3 row-cols-md-2 row-cols-sm-1">
     <% for(let listing of allListings){ %>

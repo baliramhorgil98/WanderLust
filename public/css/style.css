@@ -26,11 +26,11 @@ body {
   height: 30vh;
 }
 
-.btns{
+.btns {
   display: flex;
 }
 
-.show-card{
+.show-card {
   padding-left: 0;
   padding-right: 0;
 }
@@ -119,5 +119,3 @@ body {
   opacity: 0.2;
   background-color: white;
 }
-
-

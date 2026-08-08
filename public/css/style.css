@@ -119,3 +119,9 @@ body {
   opacity: 0.2;
   background-color: white;
 }
+
+/* Map */
+#map {
+  height: 400px;
+  width: 80vh;
+}

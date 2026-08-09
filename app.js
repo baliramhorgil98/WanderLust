@@ -113,6 +113,11 @@ app.use("/listings", listingRouter); //This one line contain the all above route
 app.use("/listings/:id/reviews", reviewRouter);
 app.use("/", userRouter);
 
+//Home route
+app.get("/", (req, res) => {
+    res.redirect("/listings");
+});
+
 //ExpressError
 app.all("/*splat", (req, res, next) => {
   next(new ExpressError(404, "Page not found!"));
@@ -124,7 +129,10 @@ app.use((err, req, res, next) => {
   // res.status(statuscode).send(message);
 });
 
+//server
+const PORT=process.env.PORT || 8080;
+
 //server creation
-app.listen(8080, () => {
-  console.log("server is listening to port 8080");
+app.listen(PORT, () => {
+  console.log(`server is listening to port ${PORT}`);
 });
